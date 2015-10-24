@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Build Web Based Video Call ApplicationUsing WebRTC</title>
+</head>
+
+<body>
+  <table width="100%" border="1">
+    <tr>
+      <td width="50%" align="center">
+        <video id="localVideo" autoplay src="#" muted></video>
+      </td>
+      <td width="50%" align="center">
+        <video id="remoteVideo" autoplay src="#"></video>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button id="startButton" onclick="start();">Start</button>
+        <button id="callButton" onclick="call(true);">Call</button>
+        <button id="hangupButton" onclick="hangup();">Hang Up</button>
+      </td>
+    </tr>
+  </table>
+
+  <script src="//192.168.43.63:4567/socket.io/socket.io.js"></script>
+  <script>
+    var myId = 'bob';
+
+    var localVideo = document.querySelector('#localVideo');
+    var remoteVideo = document.querySelector('#remoteVideo');
+
+    var startButton = document.querySelector('#startButton');
+    var callButton = document.querySelector('#callButton');
+    var hangupButton = document.querySelector('#hangupButton');
+
+    var localStream, webSocket, peerConnection;
+
+    navigator.getUserMedia = navigator.getUserMedia
+      || navigator.webkitGetUserMedia
+      || navigator.mozGetUserMedia;
+
+    var RTCPeerConnection = window.RTCPeerConnection
+      || window.webkitRTCPeerConnection
+      || window.mozRTCPeerConnection;
+
+    var RTCSessionDescription = window.RTCSessionDescription
+      || window.webkitRTCSessionDescription
+      || window.mozRTCSessionDescription;
+
+    var RTCIceCandidate = window.RTCIceCandidate
+      || window.webkitRTCIceCandidate
+      || window.mozRTCIceCandidate;
+
+    startButton.disabled = false;
+    callButton.disabled = true;
+    hangupButton.disabled = true;
+
+    function start () {
+      navigator.getUserMedia({ video: true, audio: true }, mediaCallback, errorHandler);
+
+      webSocket = new io.connect('//192.168.43.63:4567');
+      webSocket.on('message', function (message) {
+        if (!peerConnection) {
+          call(false);
+        }
+
+        var signal = JSON.parse(message);
+
+        console.log('Receive ' + signal);
+
+        if (signal.id !== myId) {
+          if (signal.sdp) {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp), function() {
+              console.log('Create answer.');
+              peerConnection.createAnswer(getLocalDescription, errorHandler);
+            }, errorHandler);
+          } else if (signal.ice) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice));
+          }
+        }
+      });
+
+      startButton.disabled = true;
+    }
+
+    function mediaCallback (stream) {
+      localVideo.src = window.URL.createObjectURL(stream);
+      localStream = stream;
+
+      callButton.disabled = false;
+    }
+
+    function call (isCaller) {
+      peerConnection = new RTCPeerConnection({
+        'iceServers': [
+          { 'url': 'stun:stun.services.mozilla.com' },
+          { 'url': 'stun:stun.l.google.com:19302' }
+        ]
+      });
+
+      peerConnection.onicecandidate = function (event) {
+        if (event.candidate !== null) {
+          webSocket.emit('message', JSON.stringify({
+            'id': myId,
+            'ice': event.candidate
+          }));
+        }
+      };
+      peerConnection.addStream(localStream);
+      peerConnection.onaddstream = function(event) {
+        remoteVideo.src = window.URL.createObjectURL(event.stream);
+      };
+
+      if (isCaller) {
+        console.log('Create offer.');
+        peerConnection.createOffer(getLocalDescription, errorHandler);
+      }
+
+      callButton.disabled = true;
+      hangupButton.disabled = false;
+    }
+
+    function getLocalDescription (description) {
+      peerConnection.setLocalDescription(description, function () {
+        console.log('Send ' + description);
+        webSocket.emit('message', JSON.stringify({
+          'id': myId,
+          'sdp': description
+        }));
+      }, errorHandler);
+    }
+
+    function hangup () {
+      peerConnection.close();
+      peerConnection = null;
+      hangupButton.disabled = true;
+      startButton.disabled = false;
+      localVideo.src = '#';
+      remoteVideo.src = '#';
+    }
+
+    function errorHandler (error) {
+      console.log(error);
+      //alert(error);
+    }
+  </script>
+</body>
+
+</html>

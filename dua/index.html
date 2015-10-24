@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Build Web Based Video Call ApplicationUsing WebRTC</title>
+</head>
+
+<body>
+  <table>
+    <tr>
+      <td>
+        <video id="localVideo" autoplay muted></video>
+      </td>
+      <td>
+        <video id="remoteVideo" autoplay></video>
+      </td>
+    </tr>
+  </table>
+
+  <script>
+    var localVideo = document.querySelector('#localVideo');
+    var remoteVideo = document.querySelector('#remoteVideo');
+
+    var localStream, localPeerConnection, remotePeerConnection;
+
+    navigator.getUserMedia = navigator.getUserMedia
+      || navigator.webkitGetUserMedia
+      || navigator.mozGetUserMedia;
+
+    var RTCPeerConnection = window.RTCPeerConnection
+      || window.webkitRTCPeerConnection
+      || window.mozRTCPeerConnection;
+
+    var RTCSessionDescription = window.RTCSessionDescription
+      || window.webkitRTCSessionDescription
+      || window.mozRTCSessionDescription;
+
+    var RTCIceCandidate = window.RTCIceCandidate
+      || window.webkitRTCIceCandidate
+      || window.mozRTCIceCandidate;
+
+    navigator.getUserMedia({ video: true, audio: true }, successCallback, errorCallback);
+
+    function successCallback (stream) {
+      localVideo.src = window.URL.createObjectURL(stream);
+      localStream = stream;
+      call();
+    }
+
+    function errorCallback (error) {
+      alert('getUserMedia error: ', error);
+    }
+
+    function call () {
+      localPeerConnection = new RTCPeerConnection({ iceServers: [] });
+      localPeerConnection.onicecandidate = gotLocalIceCandidate;
+      localPeerConnection.addStream(localStream);
+      localPeerConnection.createOffer(getLocalDescription, handleError);
+
+      remotePeerConnection = new RTCPeerConnection({ iceServers: [] });
+      remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
+      remotePeerConnection.onaddstream = gotRemoteStream;
+    }
+
+    function gotLocalIceCandidate (event) {
+      if (event.candidate) {
+        remotePeerConnection.addIceCandidate(new RTCIceCandidate(event.candidate));
+      }
+    }
+
+    function gotRemoteIceCandidate (event) {
+      if (event.candidate) {
+        localPeerConnection.addIceCandidate(new RTCIceCandidate(event.candidate));
+      }
+    }
+
+    function gotRemoteStream (event) {
+      remoteVideo.src = URL.createObjectURL(event.stream);
+    }
+
+    function gotLocalDescription (description) {
+      localPeerConnection.setLocalDescription(new RTCSessionDescription(description));
+
+      remotePeerConnection.setRemoteDescription(new RTCSessionDescription(description));
+      remotePeerConnection.createAnswer(gotRemoteDescription, handleError);
+    }
+
+    function gotRemoteDescription (description) {
+      localPeerConnection.setRemoteDescription(new RTCSessionDescription(description));
+
+      remotePeerConnection.setLocalDescription(new RTCSessionDescription(description));
+    }
+
+    function handleError (error) {
+      alert(error);
+    }
+  </script>
+</body>
+
+</html>
